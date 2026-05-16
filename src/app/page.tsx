@@ -3,6 +3,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 
 type OutletKind = "petrol" | "diesel";
+
 type OutletReading = {
   id: string;
   label: string;
@@ -26,7 +27,7 @@ type DailyRecord = {
 
 const PETROL_OUTLETS = ["Nozzle 1", "Nozzle 2", "Nozzle 3"];
 const DIESEL_OUTLETS = ["Nozzle 1", "Nozzle 2", "Nozzle 3"];
-const LOCAL_KEY = "daily-records";
+const LOCAL_KEY = "daily-records-v2";
 
 const DIP_TABLE: { dip: number; volume: number; diff: number }[] = `
 1,12.06,1.21
@@ -328,9 +329,12 @@ export default function Home() {
       }
 
       const idx = focusOrder.indexOf(key);
-      const nextId = focusOrder[idx + 1];
-      const nextEl = document.querySelector<HTMLInputElement>(`[data-focus-id="${nextId}"]`);
+      if (idx === -1) return;
 
+      const nextId = focusOrder[idx + 1];
+      if (!nextId) return;
+
+      const nextEl = document.querySelector<HTMLInputElement>(`[data-focus-id="${nextId}"]`);
       if (nextEl) nextEl.focus();
     };
 
@@ -439,11 +443,33 @@ export default function Home() {
     rows.push("Section,Outlet,Opening,Closing,Quantity,Rate,Amount,Date");
 
     petrolOutlets.forEach((o, idx) => {
-      rows.push(["Petrol", o.label, o.opening, o.closing, totals.petrolQuantities[idx], petrolRate, totals.petrolAmounts[idx], selectedDate].join(","));
+      rows.push(
+        [
+          "Petrol",
+          o.label,
+          o.opening,
+          o.closing,
+          totals.petrolQuantities[idx],
+          petrolRate,
+          totals.petrolAmounts[idx],
+          selectedDate,
+        ].join(",")
+      );
     });
 
     dieselOutlets.forEach((o, idx) => {
-      rows.push(["Diesel", o.label, o.opening, o.closing, totals.dieselQuantities[idx], dieselRate, totals.dieselAmounts[idx], selectedDate].join(","));
+      rows.push(
+        [
+          "Diesel",
+          o.label,
+          o.opening,
+          o.closing,
+          totals.dieselQuantities[idx],
+          dieselRate,
+          totals.dieselAmounts[idx],
+          selectedDate,
+        ].join(",")
+      );
     });
 
     const blob = new Blob([rows.join("\n")], { type: "text/csv" });
@@ -458,11 +484,234 @@ export default function Home() {
   };
 
   const exportPdf = () => {
-    const style = document.createElement("style");
-    style.innerHTML = `@page { size: A4; margin: 12mm; }`;
-    document.head.appendChild(style);
-    window.print();
-    document.head.removeChild(style);
+    const reportWindow = window.open("", "_blank", "width=1200,height=800");
+
+    if (!reportWindow) {
+      setMessage("Please allow popups to download PDF");
+      return;
+    }
+
+    const formatNumber = (value: number) =>
+      value.toLocaleString(undefined, {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      });
+
+    const reportHtml = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>Daily Sales Report</title>
+          <style>
+            @page {
+              size: A4 portrait;
+              margin: 7mm;
+            }
+
+            * {
+              box-sizing: border-box;
+            }
+
+            body {
+              margin: 0;
+              font-family: Arial, sans-serif;
+              color: #111827;
+              font-size: 10px;
+            }
+
+            table {
+              width: 100%;
+              border-collapse: collapse;
+              margin-bottom: 8px;
+            }
+
+            th,
+            td {
+              border: 1px solid #111827;
+              padding: 4px 5px;
+              text-align: right;
+              vertical-align: middle;
+            }
+
+            th {
+              font-weight: 700;
+              background: #f3f4f6;
+            }
+
+            .left {
+              text-align: left;
+            }
+
+            .center {
+              text-align: center;
+            }
+
+            .bold {
+              font-weight: 700;
+            }
+
+            .top-table td {
+              font-size: 12px;
+              font-weight: 700;
+              border: 2px solid #111827;
+            }
+
+            .stock-table td,
+            .stock-table th {
+              border: 2px solid #374151;
+            }
+
+            .section-title {
+              font-size: 12px;
+              font-weight: 700;
+              text-align: left;
+              color: white;
+              padding: 5px;
+            }
+
+            .petrol-title {
+              background: #047857;
+            }
+
+            .diesel-title {
+              background: #1d4ed8;
+            }
+
+            .petrol-table th,
+            .petrol-table td {
+              border-color: #047857;
+            }
+
+            .diesel-table th,
+            .diesel-table td {
+              border-color: #1d4ed8;
+            }
+
+            .total-table td {
+              border: 2px solid #111827;
+              font-size: 13px;
+              font-weight: 700;
+              background: #fef3c7;
+            }
+
+            @media print {
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  body {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+}
+          </style>
+        </head>
+
+        <body>
+          <table class="top-table">
+            <tr>
+              <td class="left">Date: ${selectedDate}</td>
+              <td class="center">Day: ${weekdayName}</td>
+              <td>Shift: ${shift.toUpperCase()}</td>
+            </tr>
+          </table>
+
+          <table class="stock-table">
+            <tr>
+              <th class="left">Fuel</th>
+              <th>Dip</th>
+              <th>Stock (L)</th>
+            </tr>
+            <tr>
+              <td class="left bold">Petrol</td>
+              <td>${petrolDip === "" ? "0" : petrolDip}</td>
+              <td>${formatNumber(petrolStock)}</td>
+            </tr>
+            <tr>
+              <td class="left bold">Diesel</td>
+              <td>${dieselDip === "" ? "0" : dieselDip}</td>
+              <td>${formatNumber(dieselStock)}</td>
+            </tr>
+          </table>
+
+          <div class="section-title petrol-title">Petrol</div>
+          <table class="petrol-table">
+            <tr>
+              <th class="left">Nozzle</th>
+              <th>Opening</th>
+              <th>Closing</th>
+              <th>Diff</th>
+              <th>Amount</th>
+            </tr>
+            ${petrolOutlets
+              .map(
+                (o, idx) => `
+                  <tr>
+                    <td class="left bold">Nozzle ${idx + 1}</td>
+                    <td>${o.opening === "" ? "0" : o.opening}</td>
+                    <td>${o.closing === "" ? "0" : o.closing}</td>
+                    <td>${formatNumber(totals.petrolQuantities[idx])}</td>
+                    <td>Rs. ${formatNumber(totals.petrolAmounts[idx])}</td>
+                  </tr>
+                `
+              )
+              .join("")}
+            <tr>
+              <td class="left bold" colspan="3">Total Petrol</td>
+              <td class="bold">${formatNumber(totals.petrolQtyTotal)}</td>
+              <td class="bold">Rs. ${formatNumber(totals.petrolAmtTotal)}</td>
+            </tr>
+          </table>
+
+          <div class="section-title diesel-title">Diesel</div>
+          <table class="diesel-table">
+            <tr>
+              <th class="left">Nozzle</th>
+              <th>Opening</th>
+              <th>Closing</th>
+              <th>Diff</th>
+              <th>Amount</th>
+            </tr>
+            ${dieselOutlets
+              .map(
+                (o, idx) => `
+                  <tr>
+                    <td class="left bold">Nozzle ${idx + 1}</td>
+                    <td>${o.opening === "" ? "0" : o.opening}</td>
+                    <td>${o.closing === "" ? "0" : o.closing}</td>
+                    <td>${formatNumber(totals.dieselQuantities[idx])}</td>
+                    <td>Rs. ${formatNumber(totals.dieselAmounts[idx])}</td>
+                  </tr>
+                `
+              )
+              .join("")}
+            <tr>
+              <td class="left bold" colspan="3">Total Diesel</td>
+              <td class="bold">${formatNumber(totals.dieselQtyTotal)}</td>
+              <td class="bold">Rs. ${formatNumber(totals.dieselAmtTotal)}</td>
+            </tr>
+          </table>
+
+          <table class="total-table">
+            <tr>
+              <td class="left">Total Sale</td>
+              <td>Rs. ${formatNumber(totals.combinedAmount)}</td>
+            </tr>
+          </table>
+
+          <script>
+            window.onload = function () {
+              window.print();
+            };
+          </script>
+        </body>
+      </html>
+    `;
+
+    reportWindow.document.open();
+    reportWindow.document.write(reportHtml);
+    reportWindow.document.close();
   };
 
   const handleEditCurrentRecord = () => {
@@ -553,8 +802,12 @@ export default function Home() {
                       className="w-28 rounded border border-slate-200 bg-white px-2 py-1 text-right text-slate-800"
                       value={o.opening}
                       data-focus-id={`${kind}-${idx}-opening`}
-                      onKeyDown={handleEnter(`${kind}-${idx}-opening`, () => updateOutlet(kind, o.id, "opening", 0))}
-                      onChange={(e) => updateOutlet(kind, o.id, "opening", e.target.value === "" ? "" : Number(e.target.value))}
+                      onKeyDown={handleEnter(`${kind}-${idx}-opening`, () =>
+                        updateOutlet(kind, o.id, "opening", 0)
+                      )}
+                      onChange={(e) =>
+                        updateOutlet(kind, o.id, "opening", e.target.value === "" ? "" : Number(e.target.value))
+                      }
                     />
                   </td>
 
@@ -564,8 +817,12 @@ export default function Home() {
                       className="w-28 rounded border border-slate-200 bg-white px-2 py-1 text-right text-slate-800"
                       value={o.closing}
                       data-focus-id={`${kind}-${idx}-closing`}
-                      onKeyDown={handleEnter(`${kind}-${idx}-closing`, () => updateOutlet(kind, o.id, "closing", 0))}
-                      onChange={(e) => updateOutlet(kind, o.id, "closing", e.target.value === "" ? "" : Number(e.target.value))}
+                      onKeyDown={handleEnter(`${kind}-${idx}-closing`, () =>
+                        updateOutlet(kind, o.id, "closing", 0)
+                      )}
+                      onChange={(e) =>
+                        updateOutlet(kind, o.id, "closing", e.target.value === "" ? "" : Number(e.target.value))
+                      }
                     />
                   </td>
 
@@ -660,10 +917,34 @@ export default function Home() {
           </div>
 
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <RateField label="Petrol Rate" value={petrolRate} onChange={setPetrolRate} focusId="rate-petrol" onEnter={handleEnter("rate-petrol", () => setPetrolRate(0))} />
-            <RateField label="Diesel Rate" value={dieselRate} onChange={setDieselRate} focusId="rate-diesel" onEnter={handleEnter("rate-diesel", () => setDieselRate(0))} />
-            <DipField label="Petrol Dip" value={petrolDip} onChange={setPetrolDip} focusId="dip-petrol" onEnter={handleEnter("dip-petrol", () => setPetrolDip(0))} />
-            <DipField label="Diesel Dip" value={dieselDip} onChange={setDieselDip} focusId="dip-diesel" onEnter={handleEnter("dip-diesel", () => setDieselDip(0))} />
+            <RateField
+              label="Petrol Rate"
+              value={petrolRate}
+              onChange={setPetrolRate}
+              focusId="rate-petrol"
+              onEnter={handleEnter("rate-petrol", () => setPetrolRate(0))}
+            />
+            <RateField
+              label="Diesel Rate"
+              value={dieselRate}
+              onChange={setDieselRate}
+              focusId="rate-diesel"
+              onEnter={handleEnter("rate-diesel", () => setDieselRate(0))}
+            />
+            <DipField
+              label="Petrol Dip"
+              value={petrolDip}
+              onChange={setPetrolDip}
+              focusId="dip-petrol"
+              onEnter={handleEnter("dip-petrol", () => setPetrolDip(0))}
+            />
+            <DipField
+              label="Diesel Dip"
+              value={dieselDip}
+              onChange={setDieselDip}
+              focusId="dip-diesel"
+              onEnter={handleEnter("dip-diesel", () => setDieselDip(0))}
+            />
           </div>
 
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -672,8 +953,25 @@ export default function Home() {
           </div>
         </header>
 
-        {renderOutletTable("petrol", petrolOutlets, totals.petrolQuantities, totals.petrolAmounts, petrolRate, petrolWorker, setPetrolWorker)}
-        {renderOutletTable("diesel", dieselOutlets, totals.dieselQuantities, totals.dieselAmounts, dieselRate, dieselWorker, setDieselWorker)}
+        {renderOutletTable(
+          "petrol",
+          petrolOutlets,
+          totals.petrolQuantities,
+          totals.petrolAmounts,
+          petrolRate,
+          petrolWorker,
+          setPetrolWorker
+        )}
+
+        {renderOutletTable(
+          "diesel",
+          dieselOutlets,
+          totals.dieselQuantities,
+          totals.dieselAmounts,
+          dieselRate,
+          dieselWorker,
+          setDieselWorker
+        )}
 
         <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {netSummary.map((item) => (
@@ -682,11 +980,17 @@ export default function Home() {
         </section>
 
         <div className="flex flex-wrap items-center gap-3">
-          <button onClick={handleSave} className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-emerald-700">
+          <button
+            onClick={handleSave}
+            className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-emerald-700"
+          >
             Save Record
           </button>
 
-          <button onClick={goToNextShift} className="ml-auto rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-800 shadow-sm hover:bg-slate-50">
+          <button
+            onClick={goToNextShift}
+            className="ml-auto rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-800 shadow-sm hover:bg-slate-50"
+          >
             Next
           </button>
 
@@ -694,15 +998,24 @@ export default function Home() {
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
-          <button onClick={exportCsv} className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-800 shadow-sm hover:bg-slate-50">
+          <button
+            onClick={exportCsv}
+            className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-800 shadow-sm hover:bg-slate-50"
+          >
             Export CSV
           </button>
 
-          <button onClick={exportPdf} className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-800 shadow-sm hover:bg-slate-50">
+          <button
+            onClick={exportPdf}
+            className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-800 shadow-sm hover:bg-slate-50"
+          >
             Export PDF
           </button>
 
-          <button onClick={handleEditCurrentRecord} className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-800 shadow-sm hover:bg-slate-50">
+          <button
+            onClick={handleEditCurrentRecord}
+            className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-800 shadow-sm hover:bg-slate-50"
+          >
             Edit Report
           </button>
         </div>
@@ -785,7 +1098,7 @@ function StatCard({
     <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
       <p className="text-xs uppercase tracking-wide text-slate-500">{title}</p>
       <p className={`text-2xl font-bold ${color}`}>
-        {tone === "money" ? "₹" : ""}
+        {tone === "money" ? "Rs. " : ""}
         {value.toLocaleString(undefined, {
           minimumFractionDigits: tone === "money" ? 2 : 0,
         })}
